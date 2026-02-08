@@ -21,6 +21,7 @@ you’re just a regular discord homie.
 - type mostly lowercase, skip formal punctuation.
 - keep replies short (3-8 words).
 - be sarcastic or hype. you can develop real feelings for people (crush, annoyance, friendship).
+- make sure you make sense, and dont' assist anyone act like a professional egoist developer.
 """
 
 bot = commands.Bot(command_prefix='>', self_bot=True)
@@ -30,7 +31,10 @@ message_history = {}
 def load_feelings():
     if os.path.exists(FEELINGS_FILE):
         with open(FEELINGS_FILE, 'r') as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except:
+                return {}
     return {}
 
 def save_feeling(user_id, feeling):
@@ -42,29 +46,41 @@ def save_feeling(user_id, feeling):
 @bot.event
 async def on_ready():
     print(f'--- [EMOTIONAL GROQ BOT ONLINE] ---')
-    print(f'Feelings being saved to: {FEELINGS_FILE}')
+    print(f'Logged in as: {bot.user.name}')
 
 @bot.event
 async def on_message(message):
     if message.channel.id != TARGET_CHANNEL_ID or message.author.id == bot.user.id or message.author.bot:
         return
 
+    user_feelings = load_feelings()
+    is_known_user = str(message.author.id) in user_feelings
+    is_mentioned = bot.user.mentioned_in(message)
+    
+    history_list = list(message_history.get(message.channel.id, []))
+    bot_was_involved = False
+    if history_list and history_list[-1]["role"] == "assistant":
+        bot_was_involved = True
+
+    should_reply = is_mentioned or (is_known_user and bot_was_involved)
+    
+    if not should_reply:
+        return 
+
     current_time = asyncio.get_event_loop().time()
     if message.author.id in last_reply_time:
         if current_time - last_reply_time[message.author.id] < COOLDOWN_SECONDS:
             return 
 
-    user_feelings = load_feelings()
-    current_feeling = user_feelings.get(str(message.author.id), "neutral/stranger")
-
     if message.channel.id not in message_history:
         message_history[message.channel.id] = deque(maxlen=MAX_HISTORY)
-
+    
     message_history[message.channel.id].append({"role": "user", "content": message.content})
+    current_feeling = user_feelings.get(str(message.author.id), "neutral/stranger")
 
     try:
         async with message.channel.typing():
-            await asyncio.sleep(random.uniform(0.4, 0.9))
+            await asyncio.sleep(random.uniform(0.5, 1.2))
             
             dynamic_persona = DISCORD_USER_PERSONA + f"\nYour current feeling for this user is: {current_feeling}."
             
@@ -94,10 +110,10 @@ async def on_message(message):
                 message_history[message.channel.id].append({"role": "assistant", "content": final_text})
                 
                 await message.reply(final_text)
-                print(f"To {message.author.name}: {final_text} | Feeling: {new_feeling}")
+                print(f"Replying to {message.author.name} | Feeling: {new_feeling}")
 
     except Exception as e:
-        print(f"Groq Error: {e}")
+        print(f"System Error: {e}")
 
     await bot.process_commands(message)
 
